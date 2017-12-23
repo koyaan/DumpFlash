@@ -45,6 +45,7 @@ class NandIO:
 	NAND_STATUS_READY=(1<<6) # HIGH - READY, LOW - BUSY
 	NAND_STATUS_NOT_PROTECTED=(1<<7) # HIGH - NOT,   LOW - PROTECTED
 
+#	(self.Name,self.ID,self.PageSize,self.ChipSizeMB,self.EraseSize,self.Options,self.AddrCycles)=device_description
 	LP_Options=1
 	DeviceDescriptions=[
 		["NAND 1MiB 5V 8-bit",		0x6e, 256, 1, 0x1000, 0, 3],
@@ -118,7 +119,8 @@ class NandIO:
 		["NAND 64GiB 1,8V 8-bit",	0x1E, 0, 65536, 0, LP_Options, 6],
 		["NAND 64GiB 3,3V 8-bit",	0x3E, 0, 65536, 0, LP_Options, 6],
 
-		#["NAND 4MiB 3,3V 8-bit",	0xd5, 512, 4, 0x2000, 0, 3]
+			#["NAND 4MiB 3,3V 8-bit",	0xd5, 512, 4, 0x2000, 0, 3]
+		["NAND 4GiB 3,3V 8-bit", 0x00, 0, 4096, 0, LP_Options, 5],
 	]
 
 	Debug=0
@@ -245,18 +247,23 @@ class NandIO:
 		self.EraseSize=0
 		self.Options=0
 		self.AddrCycles=0
-
+		for dig in id:
+			print hex(dig) 
+		print "ID1:", id[1]
 		for device_description in self.DeviceDescriptions:
 			if device_description[1]==id[1]:
 				(self.Name,self.ID,self.PageSize,self.ChipSizeMB,self.EraseSize,self.Options,self.AddrCycles)=device_description
 
+		print 'ChipSizeMB', self.ChipSizeMB
 		#Check ONFI
 		self.sendCmd(self.NAND_CMD_READID)
 		self.sendAddr(0x20,1)
 		onfitmp=self.readFlashData(4)
-
+		print onfitmp
+		
 		onfi=False
 		if onfitmp[0]=='O' and onfitmp[1]=='N' and onfitmp[2]=='F' and onfitmp[3]=='I':
+			print 'Its an ONFI!'
 			onfi=True
 
 		if onfi:
@@ -268,7 +275,7 @@ class NandIO:
 				onfi=True
 			else:
 				onfi=False
-
+				
 	   	if id[0]==0x98:
 			self.Manufacturer="Toshiba"
 		elif id[0]==0xec:
@@ -279,16 +286,19 @@ class NandIO:
 			self.Manufacturer="National Semiconductors"
 		elif id[0]==0x07:
 			self.Manufacturer="Renesas"
-		if id[0]==0x20:
+		elif id[0]==0x20:
 			self.Manufacturer="ST Micro"
-		if id[0]==0xad:
+		elif id[0]==0xad:
 			self.Manufacturer="Hynix"
-		if id[0]==0x2c:
+		elif id[0]==0x2c:
 			self.Manufacturer="Micron"
-		if id[0]==0x01:
+		elif id[0]==0x01:
 			self.Manufacturer="AMD"
-		if id[0]==0xc2:
+		elif id[0]==0xc2:
 			self.Manufacturer="Macronix"
+		else:
+			print 'Unkown Manufacturer', id[0]
+			self.Manufacturer="UNKNOWN"
 
 
 		idstr=''
@@ -298,12 +308,14 @@ class NandIO:
 			idstr = idstr[:-4]
 			if (idstr[0:2] == idstr[-2:]):
 				idstr = idstr[:-2]
+		print 'idstr:', idstr
 		self.IDString = idstr
 		self.IDLength = (len(idstr) / 2)
 		self.BitsPerCell = self.GetBitsPerCell(id[2])
 		if self.PageSize==0:
                         extid=id[3]
 			if ((self.IDLength == 6) and (self.Manufacturer == "Samsung") and (self.BitsPerCell > 1)):
+				print 'swiggly block'
 				self.Pagesize = 2048 << (extid & 0x03)
 				extid >>= 2
 				if (((extid >> 2) & 0x04) | (extid & 0x03)) == 1:
@@ -345,15 +357,26 @@ class NandIO:
 				elif (tmp == 0x03): self.EraseSize = 768 * 1024
 				else: self.EraseSize = (64 * 1024) << tmp
 			else:
+				print 'id else block', extid
 				self.PageSize = 1024 << (extid & 0x03)
+				print 'pagesize', self.PageSize
 				extid >>= 2
 				self.OOBSize = (8 << (extid & 0x01)) * (self.PageSize >> 9)
+				print 'oobsize', self.OOBSize
 				extid >>= 2
 				self.EraseSize = (64 * 1024) << (extid & 0x03)
-				if ((self.IDLength >= 6) and (self.Manufacturer == "Toshiba") and (self.BitsPerCell > 1) and ((id[5] & 0x7) == 0x6) and not (id[4] & 0x80)): Self.OOBSize = 32 * Self.PageSize >> 9
+				print 'self.EraseSize', self.EraseSize
+				print 'self.IDLenght', self.IDLength	
+				if ((self.IDLength >= 6) and (self.Manufacturer == "Toshiba") and (self.BitsPerCell > 1) and ((id[5] & 0x7) == 0x6) and not (id[4] & 0x80)):
+					print 'this block here' 
+					self.OOBSize = 32 * self.PageSize >> 9
 		else:
 			self.OOBSize = self.PageSize / 32
 
+		#print "hardsetting chipsize"
+		#self.ChipSizeMB = 2024
+		print "Bottom"
+		self.DumpInfo()
 		if self.PageSize>0:
 			self.PageCount=(self.ChipSizeMB*1024*1024)/self.PageSize
 		self.RawPageSize=self.PageSize+self.OOBSize
